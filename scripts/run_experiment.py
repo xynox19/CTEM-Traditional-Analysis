@@ -170,3 +170,17 @@ if __name__ == "__main__":
         sys.exit(1)
     finally:
         runner.cleanup()
+
+# Improved error handling
+import sys
+if __name__ == '__main__':
+    try:
+        runner = ExperimentRunner()
+        success = runner.run_full_experiment(iterations=5)
+        sys.exit(0 if success else 1)
+    except KeyboardInterrupt:
+        print("\n\nExperiment interrupted")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n\nError during experiment: {e}")
+        sys.exit(1)
