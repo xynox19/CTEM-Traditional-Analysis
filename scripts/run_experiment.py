@@ -45,6 +45,68 @@ class ExperimentRunner:
 
         self.conn.commit()
 
+    def setup_database(self):
+        """Initialize SQLite database for metrics collection"""
+        DATA_DIR.mkdir(exist_ok=True)
+        
+        self.db_conn = sqlite3.connect(DB_PATH)
+        cursor = self.db_conn.cursor()
+        
+        # Create exposures table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS exposures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                iteration_id INTEGER,
+                workflow_type TEXT,
+                exposure_id TEXT,
+                severity TEXT,
+                cvss_score REAL,
+                service TEXT,
+                vulnerability_type TEXT,
+                on_attack_path INTEGER,
+                t_appeared TIMESTAMP,
+                t_detected TIMESTAMP,
+                t_remediated TIMESTAMP,
+                remediated INTEGER DEFAULT 0,
+                mew_seconds REAL,
+                mttr_seconds REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create attack simulations table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS attack_simulations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                iteration_id INTEGER,
+                workflow_type TEXT,
+                attack_type TEXT,
+                target_service TEXT,
+                success INTEGER,
+                steps_count INTEGER,
+                attack_path TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create iterations table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS iterations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_type TEXT,
+                iteration_number INTEGER,
+                start_time TIMESTAMP,
+                end_time TIMESTAMP,
+                total_exposures INTEGER,
+                high_severity_count INTEGER,
+                critical_count INTEGER,
+                remediated_count INTEGER
+            )
+        ''')
+        
+        self.db_conn.commit()
+        print("Database initialized")
+
     def deploy_environment(self):
         subprocess.run(["docker-compose", "down"], cwd=DOCKER_DIR)
         subprocess.run(["docker-compose", "up", "-d", "--build"], cwd=DOCKER_DIR)
