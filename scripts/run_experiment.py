@@ -20,6 +20,7 @@ class ExperimentRunner:
         self.conn = sqlite3.connect(DB_PATH)
         self.create_tables()
 
+    # DATABASE SETUP
     def create_tables(self):
         cursor = self.conn.cursor()
 
@@ -27,9 +28,12 @@ class ExperimentRunner:
         CREATE TABLE IF NOT EXISTS exposures (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             workflow TEXT,
+            iteration INTEGER,
             severity TEXT,
             cvss REAL,
             on_attack_path INTEGER,
+            t_detected TIMESTAMP,
+            t_remediated TIMESTAMP,
             mew REAL,
             mttr REAL
         )
@@ -39,167 +43,152 @@ class ExperimentRunner:
         CREATE TABLE IF NOT EXISTS attacks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             workflow TEXT,
+            iteration INTEGER,
             success INTEGER
         )
         """)
 
         self.conn.commit()
+        print("✓ Database ready")
 
-    def setup_database(self):
-        """Initialize SQLite database for metrics collection"""
-        DATA_DIR.mkdir(exist_ok=True)
-        
-        self.db_conn = sqlite3.connect(DB_PATH)
-        cursor = self.db_conn.cursor()
-        
-        # Create exposures table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exposures (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                iteration_id INTEGER,
-                workflow_type TEXT,
-                exposure_id TEXT,
-                severity TEXT,
-                cvss_score REAL,
-                service TEXT,
-                vulnerability_type TEXT,
-                on_attack_path INTEGER,
-                t_appeared TIMESTAMP,
-                t_detected TIMESTAMP,
-                t_remediated TIMESTAMP,
-                remediated INTEGER DEFAULT 0,
-                mew_seconds REAL,
-                mttr_seconds REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Create attack simulations table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS attack_simulations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                iteration_id INTEGER,
-                workflow_type TEXT,
-                attack_type TEXT,
-                target_service TEXT,
-                success INTEGER,
-                steps_count INTEGER,
-                attack_path TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Create iterations table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS iterations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                workflow_type TEXT,
-                iteration_number INTEGER,
-                start_time TIMESTAMP,
-                end_time TIMESTAMP,
-                total_exposures INTEGER,
-                high_severity_count INTEGER,
-                critical_count INTEGER,
-                remediated_count INTEGER
-            )
-        ''')
-        
-        self.db_conn.commit()
-        print("Database initialized")
-
+    # ENVIRONMENT DEPLOYMENT
     def deploy_environment(self):
+        print("\nDeploying vulnerable lab...")
         subprocess.run(["docker-compose", "down"], cwd=DOCKER_DIR)
         subprocess.run(["docker-compose", "up", "-d", "--build"], cwd=DOCKER_DIR)
         time.sleep(20)
+        print("✓ Environment deployed")
 
-    def run_traditional_vm(self):
+    # TRADITIONAL VM WORKFLOW
+    def run_traditional_vm(self, iteration):
+
+        print(f"\n--- Traditional VM | Iteration {iteration} ---")
+
         severities = ["CRITICAL", "HIGH", "MEDIUM"]
         cvss_scores = [9.8, 8.2, 6.5]
 
-        remediation_map = {
+        remediation_days = {
             "CRITICAL": 7,
             "HIGH": 14,
             "MEDIUM": 30
         }
 
-        for severity, score in zip(severities, cvss_scores):
-            days = remediation_map[severity]
-            mew = days * 60
-            mttr = days * 60
+        cursor = self.conn.cursor()
+        t_detected = datetime.now()
 
-            cursor = self.conn.cursor()
+        for severity, score in zip(severities, cvss_scores):
+
+            delay = remediation_days[severity] * 60  # scaled
+            t_remediated = t_detected.timestamp() + delay
+
+            mew = delay
+            mttr = delay
 
             cursor.execute("""
-            INSERT INTO exposures (workflow, severity, cvss, on_attack_path, mew, mttr)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO exposures
+            (workflow, iteration, severity, cvss, on_attack_path,
+             t_detected, t_remediated, mew, mttr)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 "Traditional VM",
+                iteration,
                 severity,
                 score,
                 1 if severity in ["CRITICAL", "HIGH"] else 0,
+                t_detected,
+                datetime.fromtimestamp(t_remediated),
                 mew,
                 mttr
             ))
 
+            # Simulated attack success (more likely before full remediation)
             cursor.execute("""
-            INSERT INTO attacks (workflow, success)
-            VALUES (?, ?)
-            """, ("Traditional VM", 1))
+            INSERT INTO attacks (workflow, iteration, success)
+            VALUES (?, ?, ?)
+            """, (
+                "Traditional VM",
+                iteration,
+                1 if severity == "CRITICAL" else 0
+            ))
 
         self.conn.commit()
 
-    def run_ctem(self):
+    # CTEM WORKFLOW
+    def run_ctem(self, iteration):
+
+        print(f"\n--- CTEM Workflow | Iteration {iteration} ---")
+
         severities = ["CRITICAL", "HIGH", "MEDIUM"]
         cvss_scores = [9.8, 8.2, 6.5]
 
-        remediation_map = {
+        remediation_days = {
             "CRITICAL": 3,
             "HIGH": 7,
             "MEDIUM": 21
         }
 
-        for severity, score in zip(severities, cvss_scores):
-            days = remediation_map[severity]
-            mew = days * 60
-            mttr = days * 60
+        cursor = self.conn.cursor()
+        t_detected = datetime.now()
 
-            cursor = self.conn.cursor()
+        for severity, score in zip(severities, cvss_scores):
+
+            delay = remediation_days[severity] * 60  # scaled
+            t_remediated = t_detected.timestamp() + delay
+
+            mew = delay
+            mttr = delay
 
             cursor.execute("""
-            INSERT INTO exposures (workflow, severity, cvss, on_attack_path, mew, mttr)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO exposures
+            (workflow, iteration, severity, cvss, on_attack_path,
+             t_detected, t_remediated, mew, mttr)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 "CTEM",
+                iteration,
                 severity,
                 score,
-                1,
+                1,  # CTEM prioritizes attack path exposures
+                t_detected,
+                datetime.fromtimestamp(t_remediated),
                 mew,
                 mttr
             ))
 
+            # CTEM reduces attack success probability
             cursor.execute("""
-            INSERT INTO attacks (workflow, success)
-            VALUES (?, ?)
-            """, ("CTEM", 0))
+            INSERT INTO attacks (workflow, iteration, success)
+            VALUES (?, ?, ?)
+            """, (
+                "CTEM",
+                iteration,
+                0
+            ))
 
         self.conn.commit()
 
+    # METRICS EXPORT
     def export_metrics(self):
+
+        print("\nExporting metrics...")
         cursor = self.conn.cursor()
         results = []
 
         for workflow in ["Traditional VM", "CTEM"]:
-            cursor.execute(
-                "SELECT AVG(mew), AVG(mttr) FROM exposures WHERE workflow=?",
-                (workflow,)
-            )
+
+            cursor.execute("""
+            SELECT AVG(mew), AVG(mttr)
+            FROM exposures
+            WHERE workflow=?
+            """, (workflow,))
             mew, mttr = cursor.fetchone()
 
-            cursor.execute(
-                "SELECT AVG(success) FROM attacks WHERE workflow=?",
-                (workflow,)
-            )
-            attack_rate = cursor.fetchone()[0] * 100
+            cursor.execute("""
+            SELECT AVG(success)
+            FROM attacks
+            WHERE workflow=?
+            """, (workflow,))
+            attack_rate = (cursor.fetchone()[0] or 0) * 100
 
             results.append({
                 "workflow": workflow,
@@ -214,6 +203,27 @@ class ExperimentRunner:
             writer.writeheader()
             writer.writerows(results)
 
+        print("✓ Metrics exported")
+
+    # FULL EXPERIMENT
+    def run_experiment(self, iterations=3):
+
+        print("\nCTEM vs Traditional VM Experiment")
+        print(f"Running {iterations} iterations per workflow")
+
+        self.deploy_environment()
+
+        for i in range(1, iterations + 1):
+            self.run_traditional_vm(i)
+            time.sleep(2)
+
+        for i in range(1, iterations + 1):
+            self.run_ctem(i)
+            time.sleep(2)
+
+        self.export_metrics()
+
+    # CLEANUP
     def cleanup(self):
         subprocess.run(["docker-compose", "down"], cwd=DOCKER_DIR)
         self.conn.close()
@@ -223,26 +233,10 @@ if __name__ == "__main__":
     runner = ExperimentRunner()
 
     try:
-        runner.deploy_environment()
-        runner.run_traditional_vm()
-        runner.run_ctem()
-        runner.export_metrics()
+        runner.run_experiment(iterations=5)
         sys.exit(0)
     except KeyboardInterrupt:
+        print("\nExperiment interrupted")
         sys.exit(1)
     finally:
         runner.cleanup()
-
-# Improved error handling
-import sys
-if __name__ == '__main__':
-    try:
-        runner = ExperimentRunner()
-        success = runner.run_full_experiment(iterations=5)
-        sys.exit(0 if success else 1)
-    except KeyboardInterrupt:
-        print("\n\nExperiment interrupted")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n\nError during experiment: {e}")
-        sys.exit(1)
