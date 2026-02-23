@@ -1,0 +1,15 @@
+{
+  "name": "vulnerable-api",
+  "version": "1.0.0",
+  "description": "Intentionally vulnerable API for CTEM testing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "4.17.1",
+    "mysql2": "2.2.5",
+    "jsonwebtoken": "8.5.1",
+    "body-parser": "1.19.0"
+  }
+}

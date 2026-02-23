@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # Service 1: DVWA (Damn Vulnerable Web Application)
+  dvwa:
+    image: vulnerables/web-dvwa
+    container_name: ctem_dvwa
+    ports:
+      - "8080:80"
+    environment:
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=password
+    networks:
+      - vuln_network
+    restart: unless-stopped
+
+  # Service 2: Vulnerable MySQL Database
+  mysql:
+    image: mysql:5.7
+    container_name: ctem_mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=testdb
+      - MYSQL_USER=admin
+      - MYSQL_PASSWORD=admin123
+    volumes:
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - vuln_network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Service 3: Vulnerable Node.js API
+  vulnerable_api:
+    build:
+      context: ./vulnerable-api
+      dockerfile: Dockerfile
+    container_name: ctem_api
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=mysql
+      - DB_USER=admin
+      - DB_PASS=admin123
+      - JWT_SECRET=insecure_secret_key
+    depends_on:
+      - mysql
+    networks:
+      - vuln_network
+    restart: unless-stopped
+
+networks:
+  vuln_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+
+# Virtual Environment
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Experiment data
+data/*.db
+data/*.csv
+
+# Docker
+docker/vulnerable-api/node_modules/
+
+# Logs
+*.log
