@@ -690,14 +690,5 @@ if __name__ == '__main__':
     finally:
         runner.cleanup()
         print("\n✓ Cleanup complete")
-
-# Improved error handling
-import sys
-if __name__ == '__main__':
-    try:
-        runner = ExperimentRunner()
-        success = runner.run_full_experiment(iterations=5)
-        sys.exit(0 if success else 1)
-    except KeyboardInterrupt:
-        print("\n\nExperiment interrupted")
-        sys.exit(1)
+    
+    sys.exit(0)
