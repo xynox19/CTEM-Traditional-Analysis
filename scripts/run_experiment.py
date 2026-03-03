@@ -665,16 +665,7 @@ class ExperimentRunner:
             self.db_conn.close()
 
 if __name__ == '__main__':
-    import sys
-    
-    # Check for --docker flag to use Docker if available
-    use_docker = '--docker' in sys.argv
-    
-    # Create runner (defaults to simulation mode, can use Docker if --docker flag set)
-    if use_docker:
-        runner = ExperimentRunner(simulation_mode=False)
-    else:
-        runner = ExperimentRunner(simulation_mode=True)
+    runner = ExperimentRunner()
     
     try:
         success = runner.run_full_experiment(iterations=5)
@@ -690,5 +681,14 @@ if __name__ == '__main__':
     finally:
         runner.cleanup()
         print("\n✓ Cleanup complete")
-    
-    sys.exit(0)
+
+# Improved error handling
+import sys
+if __name__ == '__main__':
+    try:
+        runner = ExperimentRunner()
+        success = runner.run_full_experiment(iterations=5)
+        sys.exit(0 if success else 1)
+    except KeyboardInterrupt:
+        print("\n\nExperiment interrupted")
+        sys.exit(1)
