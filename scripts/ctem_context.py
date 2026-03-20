@@ -175,6 +175,35 @@ class CTEMContextAnalyzer:
         
         return attack_paths
 
+    def calculate_metrics(self, vulnerabilities):
+        total = len(vulnerabilities)
+        critical = len([v for v in vulnerabilities if v.get('severity') == 'CRITICAL'])
+        high = len([v for v in vulnerabilities if v.get('severity') == 'HIGH'])
+        avg_cvss = round(sum(v.get('cvss_score', 0) for v in vulnerabilities) / total, 2) if total else 0
+        avg_risk = round(sum(v.get('risk_score', 0) for v in vulnerabilities) / total, 2) if total else 0
+        exploitable = len([v for v in vulnerabilities if v.get('exploitable')])
+        avg_exploit_prob = round(sum(v.get('exploit_probability', 0) for v in vulnerabilities) / total, 2) if total else 0
+
+        return {
+            'context': 'CTEM',
+            'total_vulnerabilities': total,
+            'critical': critical,
+            'high': high,
+            'avg_cvss': avg_cvss,
+            'avg_risk_score': avg_risk,
+            'exploitable': exploitable,
+            'avg_exploit_probability': avg_exploit_prob,
+            # Standardized keys for comparison
+            'avg_exploit_priority': 0,
+            'avg_exposure_criticality': 0,
+            'external_exposure': 0,
+            'internal_exposure': 0,
+            'avg_detection_confidence': 0,
+            'tickets_created': 0,
+            'open_tickets': 0
+        }
+
+
 if __name__ == '__main__':
     # Test
     from vulnerability_scanner import VulnerabilityScanner

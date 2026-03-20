@@ -174,7 +174,7 @@ class AttackSurfaceDiscoveryAnalyzer:
         zones = {}
         
         for vuln in vulnerabilities:
-            zone = vuln_copy.get('asset_exposure', 'UNKNOWN')
+            zone = vuln.get('asset_exposure', 'UNKNOWN')
             
             if zone not in zones:
                 zones[zone] = {
@@ -258,6 +258,44 @@ class AttackSurfaceDiscoveryAnalyzer:
         report['technologies_identified'] = list(report['technologies_identified'])
         
         return report
+
+    def calculate_metrics(self, vulnerabilities):
+        """
+        Calculate high-level metrics for the attack surface context.
+        Returns a summary dict that can be used for comparisons and visualizations.
+        """
+        total = len(vulnerabilities)
+        severity_counts = {
+            'CRITICAL': len([v for v in vulnerabilities if v['severity'] == 'CRITICAL']),
+            'HIGH': len([v for v in vulnerabilities if v['severity'] == 'HIGH']),
+            'MEDIUM': len([v for v in vulnerabilities if v['severity'] == 'MEDIUM']),
+            'LOW': len([v for v in vulnerabilities if v['severity'] == 'LOW'])
+        }
+        avg_cvss = round(sum(v['cvss_score'] for v in vulnerabilities) / total, 2) if total else 0
+        avg_exposure_criticality = round(sum(v.get('exposure_criticality_score', 0) for v in vulnerabilities) / total, 2) if total else 0
+        external = len([v for v in vulnerabilities if v.get('asset_exposure') == 'EXTERNAL'])
+        internal = len([v for v in vulnerabilities if v.get('asset_exposure') == 'INTERNAL'])
+        
+        exploitable = len([v for v in vulnerabilities if v.get('exposure_criticality_score', 0) >= 7.0])
+        avg_exploit_priority = round(sum(v.get('exposure_criticality_score', 0) for v in vulnerabilities) / total, 2) if total else 0
+
+        return {
+            'context': 'AttackSurfaceDiscovery',
+            'total_vulnerabilities': total,
+            'critical': severity_counts['CRITICAL'],
+            'high': severity_counts['HIGH'],
+            'avg_cvss': avg_cvss,
+            'avg_exposure_criticality': avg_exposure_criticality,
+            'external_exposure': external,
+            'internal_exposure': internal,
+            # Exploitation concept for plot parity
+            'exploitable': exploitable,
+            'avg_exploit_priority': avg_exploit_priority,
+            'avg_exploit_probability': 0,
+            'avg_detection_confidence': 0,
+            'tickets_created': 0,
+            'open_tickets': 0
+        }
 
 
 if __name__ == '__main__':

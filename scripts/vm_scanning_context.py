@@ -219,6 +219,36 @@ class VMScanningContextAnalyzer:
         
         return trend_analysis
 
+    def calculate_metrics(self, vulnerabilities, tickets=None):
+        total = len(vulnerabilities)
+        critical = len([v for v in vulnerabilities if v.get('severity') == 'CRITICAL'])
+        high = len([v for v in vulnerabilities if v.get('severity') == 'HIGH'])
+        avg_cvss = round(sum(v.get('cvss_score', 0) for v in vulnerabilities) / total, 2) if total else 0
+        avg_confidence = round(sum(v.get('detection_confidence', 0) for v in vulnerabilities) / total, 2) if total else 0
+        tickets_created = len(tickets) if tickets is not None else 0
+        open_tickets = len([t for t in tickets if t.get('status') == 'OPEN']) if tickets is not None else 0
+
+        avg_exploit_priority = round(sum(v.get('priority_score', 0) for v in vulnerabilities) / total, 2) if total else 0
+        exploitable = len([v for v in vulnerabilities if v.get('priority_score', 0) >= 7.0])
+
+        return {
+            'context': 'VMScanning',
+            'total_vulnerabilities': total,
+            'critical': critical,
+            'high': high,
+            'avg_cvss': avg_cvss,
+            'avg_detection_confidence': avg_confidence,
+            'tickets_created': tickets_created,
+            'open_tickets': open_tickets,
+            # Exploitation-aligned metrics for comparison
+            'exploitable': exploitable,
+            'avg_exploit_priority': avg_exploit_priority,
+            'avg_exploit_probability': 0,
+            'avg_exposure_criticality': 0,
+            'external_exposure': 0,
+            'internal_exposure': 0
+        }
+
 
 if __name__ == '__main__':
     from vulnerability_scanner import VulnerabilityScanner
