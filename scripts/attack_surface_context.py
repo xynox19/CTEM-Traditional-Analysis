@@ -114,6 +114,7 @@ class AttackSurfaceDiscoveryAnalyzer:
                     exposure_path = {
                         'entry': 'Network Port 3306',
                         'intermediate': 'MySQL Authentication',
+                        'target': 'Database Engine',
                         'hops': 0,
                         'attacker_access_level': 'Brute Force'
                     }
