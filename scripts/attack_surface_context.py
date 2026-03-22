@@ -110,13 +110,21 @@ class AttackSurfaceDiscoveryAnalyzer:
                 }
             
             else:  # MySQL
-                exposure_path = {
-                    'entry': 'Network Port 3306',
-                    'intermediate': 'MySQL Service',
-                    'target': 'Database Engine',
-                    'hops': 0,
-                    'attacker_access_level': 'Network Access'
-                }
+                if 'Default Credentials' in vuln['type'] or 'Password' in vuln['type']:
+                    exposure_path = {
+                        'entry': 'Network Port 3306',
+                        'intermediate': 'MySQL Authentication',
+                        'hops': 0,
+                        'attacker_access_level': 'Brute Force'
+                    }
+                else:
+                    exposure_path = {
+                        'entry': 'Network Port 3306',
+                        'intermediate': 'MySQL Service',
+                        'target': 'Database Engine',
+                        'hops': 0,
+                        'attacker_access_level': 'Network Access'
+                    }
             
             vuln_copy['exposure_path'] = exposure_path
             with_exposure_paths.append(vuln_copy)
@@ -261,8 +269,8 @@ class AttackSurfaceDiscoveryAnalyzer:
 
     def calculate_metrics(self, vulnerabilities):
         """
-        Calculate high-level metrics for the attack surface context.
-        Returns a summary dict that can be used for comparisons and visualizations.
+        Calculate ASD-specific metrics
+        ASD focus: exposure surface, asset inventory, entry points
         """
         total = len(vulnerabilities)
         severity_counts = {
@@ -278,6 +286,7 @@ class AttackSurfaceDiscoveryAnalyzer:
         
         exploitable = len([v for v in vulnerabilities if v.get('exposure_criticality_score', 0) >= 7.0])
         avg_exploit_priority = round(sum(v.get('exposure_criticality_score', 0) for v in vulnerabilities) / total, 2) if total else 0
+        total_entry_points = sum(len(v.get('entry_points', [])) for v in vulnerabilities)
 
         return {
             'context': 'AttackSurfaceDiscovery',
@@ -288,7 +297,7 @@ class AttackSurfaceDiscoveryAnalyzer:
             'avg_exposure_criticality': avg_exposure_criticality,
             'external_exposure': external,
             'internal_exposure': internal,
-            # Exploitation concept for plot parity
+            'total_entry_points': total_entry_points,
             'exploitable': exploitable,
             'avg_exploit_priority': avg_exploit_priority,
             'avg_exploit_probability': 0,
@@ -300,7 +309,6 @@ class AttackSurfaceDiscoveryAnalyzer:
 
 if __name__ == '__main__':
     from vulnerability_scanner import VulnerabilityScanner
-    
     scanner = VulnerabilityScanner()
     vulns = scanner.scan_targets(['http://localhost:8080', 'localhost:3306', 'http://localhost:3000'])
     
