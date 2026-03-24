@@ -9,7 +9,7 @@ class CTEMContextAnalyzer:
             'MySQL': 'CRITICAL', # Contains PII/sensitive data
             'API': 'CRITICAL'    # Core business functionality
         }
-        
+
         # Threat intelligence feed (simulated)
         self.active_threats = [
             'SQL Injection',
@@ -18,8 +18,11 @@ class CTEMContextAnalyzer:
         ]
     
     def add_business_context(self, vulnerabilities):
-        #Add business context to each vulnerability
-        #CTEM differentiator: Considers business impact, not just technical severity
+        """
+        Add business context to each vulnerability
+        CTEM differentiator: Considers business impact, not just technical severity
+        Evaluates asset criticality, threat intelligence, and exposure factors
+        """
         contextualized = []
         
         for vuln in vulnerabilities:
@@ -96,8 +99,8 @@ class CTEMContextAnalyzer:
     def validate_exploitability(self, vulnerabilities):
         """
         CTEM Validation: Simulate breach and attack simulation (BAS)
-        
-        Determines which vulnerabilities are actually exploitable
+        Determines which vulnerabilities are actually exploitable in practice
+        Factors: CVSS score, risk score, active threats, and likelihood of exploitation
         """
         validated = []
         
@@ -115,9 +118,9 @@ class CTEMContextAnalyzer:
             if vuln['severity'] == 'CRITICAL':
                 exploit_probability += 0.2
             
-            # Active threats definitely exploitable
-            if vuln_copy.get('actively_exploited'):
-                exploit_probability = 1.0
+            # Clamp probability to 0.0-1.0 range
+            exploit_probability = min(exploit_probability, 1.0)
+            exploit_probability = max(exploit_probability, 0.0)
             
             vuln_copy['exploitable'] = random.random() < exploit_probability
             vuln_copy['exploit_probability'] = round(exploit_probability, 2)
@@ -176,6 +179,10 @@ class CTEMContextAnalyzer:
         return attack_paths
 
     def calculate_metrics(self, vulnerabilities):
+        """
+        Calculate CTEM-specific metrics
+        Focus: risk-based prioritization, exploitability, attack paths
+        """
         total = len(vulnerabilities)
         critical = len([v for v in vulnerabilities if v.get('severity') == 'CRITICAL'])
         high = len([v for v in vulnerabilities if v.get('severity') == 'HIGH'])
@@ -183,6 +190,9 @@ class CTEMContextAnalyzer:
         avg_risk = round(sum(v.get('risk_score', 0) for v in vulnerabilities) / total, 2) if total else 0
         exploitable = len([v for v in vulnerabilities if v.get('exploitable')])
         avg_exploit_prob = round(sum(v.get('exploit_probability', 0) for v in vulnerabilities) / total, 2) if total else 0
+        external_exposure = len([v for v in vulnerabilities if v.get('exposure') == 'EXTERNAL'])
+        internal_exposure = len([v for v in vulnerabilities if v.get('exposure') == 'INTERNAL'])
+        active_exploits = len([v for v in vulnerabilities if v.get('actively_exploited')])
 
         return {
             'context': 'CTEM',
@@ -193,11 +203,12 @@ class CTEMContextAnalyzer:
             'avg_risk_score': avg_risk,
             'exploitable': exploitable,
             'avg_exploit_probability': avg_exploit_prob,
+            'external_exposure': external_exposure,
+            'internal_exposure': internal_exposure,
+            'active_exploits': active_exploits,
             # Standardized keys for comparison
             'avg_exploit_priority': 0,
             'avg_exposure_criticality': 0,
-            'external_exposure': 0,
-            'internal_exposure': 0,
             'avg_detection_confidence': 0,
             'tickets_created': 0,
             'open_tickets': 0

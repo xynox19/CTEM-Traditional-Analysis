@@ -3,7 +3,7 @@
 import random
 from datetime import datetime, timedelta
 
-class VMScanningContextAnalyzer:   
+class VMScanningContextAnalyzer:
     def __init__(self):
         # Scanning schedule (traditional approach)
         self.scan_schedules = {
@@ -67,7 +67,7 @@ class VMScanningContextAnalyzer:
         for vuln in vulnerabilities:
             vuln_copy = vuln.copy()
             
-            # CVSS is the primary prioritization metric
+            # CVSS is the primary prioritization metric in traditional scanning
             vuln_copy['priority_score'] = vuln['cvss_score']
             
             # Add CVSS-based severity tier
@@ -90,14 +90,16 @@ class VMScanningContextAnalyzer:
             
             prioritized.append(vuln_copy)
         
-        # Sort by CVSS descending
+        # Sort by CVSS score descending
         return sorted(prioritized, key=lambda x: x['priority_score'], reverse=True)
     
     def create_remediation_tickets(self, vulnerabilities):
+        #Create remediation tickets for report generation
+        #Only creates tickets for vulnerabilities meeting compliance threshold
         tickets = []
         
         for idx, vuln in enumerate(vulnerabilities, 1):
-            # Skip low severity items that don't meet compliance threshold
+            # Only create tickets for findings that meet compliance requirements
             if vuln['cvss_score'] < self.compliance_requirements['CVSS_threshold']:
                 continue
             
@@ -220,6 +222,10 @@ class VMScanningContextAnalyzer:
         return trend_analysis
 
     def calculate_metrics(self, vulnerabilities, tickets=None):
+        """
+        Calculate VM scanning-specific metrics
+        Focus: CVSS-based statistics, detection confidence, ticket tracking, compliance
+        """
         total = len(vulnerabilities)
         critical = len([v for v in vulnerabilities if v.get('severity') == 'CRITICAL'])
         high = len([v for v in vulnerabilities if v.get('severity') == 'HIGH'])
@@ -227,9 +233,15 @@ class VMScanningContextAnalyzer:
         avg_confidence = round(sum(v.get('detection_confidence', 0) for v in vulnerabilities) / total, 2) if total else 0
         tickets_created = len(tickets) if tickets is not None else 0
         open_tickets = len([t for t in tickets if t.get('status') == 'OPEN']) if tickets is not None else 0
-
-        avg_exploit_priority = round(sum(v.get('priority_score', 0) for v in vulnerabilities) / total, 2) if total else 0
-        exploitable = len([v for v in vulnerabilities if v.get('priority_score', 0) >= 7.0])
+        
+        # Calculate compliance metrics
+        compliance_violations = len([v for v in vulnerabilities 
+                                    if v.get('cvss_score', 0) >= self.compliance_requirements['CVSS_threshold'] 
+                                    and v.get('severity') in ['CRITICAL', 'HIGH']])
+        
+        # Exploitable concept (CVSS >= 7.0 typical high risk threshold)
+        exploitable = len([v for v in vulnerabilities if v.get('cvss_score', 0) >= 7.0])
+        avg_priority = round(sum(v.get('priority_score', 0) for v in vulnerabilities) / total, 2) if total else 0
 
         return {
             'context': 'VMScanning',
@@ -240,9 +252,10 @@ class VMScanningContextAnalyzer:
             'avg_detection_confidence': avg_confidence,
             'tickets_created': tickets_created,
             'open_tickets': open_tickets,
-            # Exploitation-aligned metrics for comparison
+            'compliance_violations': compliance_violations,
             'exploitable': exploitable,
-            'avg_exploit_priority': avg_exploit_priority,
+            'avg_exploit_priority': avg_priority,
+            # Standardized keys for comparison
             'avg_exploit_probability': 0,
             'avg_exposure_criticality': 0,
             'external_exposure': 0,

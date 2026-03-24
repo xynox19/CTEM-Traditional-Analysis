@@ -7,8 +7,6 @@ Focuses on identifying and mapping all external-facing assets and entry points
 import random
 
 class AttackSurfaceDiscoveryAnalyzer:
-    """Analyzes vulnerabilities using attack surface discovery methodology"""
-    
     def __init__(self):
         # Asset inventory from ASD process
         self.discovered_assets = {
