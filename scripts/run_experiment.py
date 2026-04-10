@@ -6,6 +6,8 @@ import sqlite3
 import random
 from datetime import datetime
 from pathlib import Path
+import numpy as np
+import statistics
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -17,6 +19,7 @@ class ExperimentRunner:
     def __init__(self, simulation_mode=False):
         self.db_conn = None
         self.simulation_mode = simulation_mode
+        self.monte_carlo_runs = 30 
         if simulation_mode:
             print("\n⚠ SIMULATION MODE ENABLED (Docker not required)")
         self.setup_database()
@@ -115,7 +118,21 @@ class ExperimentRunner:
         ]
         return attacks
 
+    def randomize_enterprise_friction(self):
+        """
+        Randomize enterprise organizational friction.
+        Each Monte Carlo run represents a different company.
+        """
 
+        self.legacy_friction = {
+            "scan_schedule_days": random.choice([7, 10, 14]),
+            "network_latency": (random.uniform(2,5), random.uniform(6,12)),
+            "triage_delay": (random.uniform(20,40), random.uniform(60,120)),
+            "change_window_delay": (random.uniform(60,120), random.uniform(180,300)),
+            "reboot_probability": random.uniform(0.2, 0.5)
+        }
+
+        print(f"🎲 Enterprise friction randomized: {self.legacy_friction}")
     
     def deploy_environment(self):
         """Deploy vulnerable services using Docker Compose or use simulation"""
@@ -645,10 +662,96 @@ class ExperimentRunner:
         
         return True
     
+    def run_monte_carlo_experiment(self, iterations=5):
+        print("\n" + "="*70)
+        print("MONTE CARLO CTEM vs TRADITIONAL VM EXPERIMENT")
+        print("="*70)
+
+        all_results = []
+
+        for run in range(1, self.monte_carlo_runs + 1):
+
+            print(f"\nMONTE CARLO RUN {run}/{self.monte_carlo_runs}")
+
+            # Randomize enterprise conditions
+            self.randomize_enterprise_friction()
+
+            # Reset database
+            if self.db_conn:
+                self.db_conn.close()
+
+            if DB_PATH.exists():
+                DB_PATH.unlink()
+
+            self.setup_database()
+
+            success = self.run_full_experiment(iterations)
+
+            if not success:
+                continue
+
+            cursor = self.db_conn.cursor()
+
+            cursor.execute("""
+                SELECT workflow_type,
+                    AVG(mew_seconds),
+                    AVG(mttr_seconds)
+                FROM exposures
+                GROUP BY workflow_type
+            """)
+
+            for row in cursor.fetchall():
+                workflow, mew, mttr = row
+                all_results.append({
+                    "run": run,
+                    "workflow": workflow,
+                    "mew": mew,
+                    "mttr": mttr
+                })
+
+        self.export_monte_carlo_statistics(all_results)
+
+    def export_monte_carlo_statistics(self, results):
+        import csv
+        from collections import defaultdict
+
+        grouped = defaultdict(list)
+
+        for r in results:
+            grouped[(r["workflow"], "MEW")].append(r["mew"])
+            grouped[(r["workflow"], "MTTR")].append(r["mttr"])
+
+        summary = []
+
+        for (workflow, metric), values in grouped.items():
+
+            mean = statistics.mean(values)
+            std = statistics.stdev(values)
+            ci95 = 1.96 * (std / np.sqrt(len(values)))
+
+            summary.append({
+                "workflow": workflow,
+                "metric": metric,
+                "mean": mean,
+                "std_dev": std,
+                "ci95_lower": mean - ci95,
+                "ci95_upper": mean + ci95
+            })
+
+        output_file = DATA_DIR / "monte_carlo_summary.csv"
+
+        with open(output_file, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=summary[0].keys())
+            writer.writeheader()
+            writer.writerows(summary)
+
+        print("\nMonte Carlo statistics exported:")
+        print(output_file)
+
     def cleanup(self):
         """Stop Docker containers and cleanup"""
         if self.simulation_mode:
-            print("📊 Cleaning up simulated environment")
+            print("Cleaning up simulated environment")
         else:
             try:
                 subprocess.run(
@@ -659,7 +762,7 @@ class ExperimentRunner:
                     timeout=30
                 )
             except Exception as e:
-                print(f"⚠ Cleanup error (non-critical): {e}")
+                print(f"Cleanup error (non-critical): {e}")
         
         if self.db_conn:
             self.db_conn.close()
@@ -668,7 +771,8 @@ if __name__ == '__main__':
     runner = ExperimentRunner()
     
     try:
-        success = runner.run_full_experiment(iterations=5)
+        #success = runner.run_full_experiment(iterations=5)
+        success = runner.run_monte_carlo_experiment(iterations=5)
         if not success:
             print("\n✗ Experiment failed - check logs above")
             sys.exit(1)
@@ -687,7 +791,8 @@ import sys
 if __name__ == '__main__':
     try:
         runner = ExperimentRunner()
-        success = runner.run_full_experiment(iterations=5)
+        #success = runner.run_full_experiment(iterations=5)
+        success = runner.run_monte_carlo_experiment(iterations=5)
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         print("\n\nExperiment interrupted")
