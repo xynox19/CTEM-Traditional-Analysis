@@ -6,7 +6,7 @@ Focuses on identifying and mapping all external-facing assets and entry points
 
 import random
 
-class AttackSurfaceDiscoveryAnalyzer:
+class AttackSurfaceDiscoveryAnalyser:
     def __init__(self):
         # Asset inventory from ASD process
         self.discovered_assets = {
@@ -311,7 +311,7 @@ if __name__ == '__main__':
     scanner = VulnerabilityScanner()
     vulns = scanner.scan_targets(['http://localhost:8080', 'localhost:3306', 'http://localhost:3000'])
     
-    analyzer = AttackSurfaceDiscoveryAnalyzer()
+    analyzer = AttackSurfaceDiscoveryAnalyser()
     
     print("\n=== ATTACK SURFACE DISCOVERY METHODOLOGY ===")
     

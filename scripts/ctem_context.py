@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import random
 
-class CTEMContextAnalyzer:
+class CTEMContextAnalyser:
     def __init__(self):
         # Asset criticality mapping
         self.asset_criticality = {
@@ -222,7 +222,7 @@ if __name__ == '__main__':
     scanner = VulnerabilityScanner()
     vulns = scanner.scan_targets(['http://localhost:8080', 'localhost:3306'])
     
-    analyzer = CTEMContextAnalyzer()
+    analyzer = CTEMContextAnalyser()
     contextualized = analyzer.add_business_context(vulns)
     prioritized = analyzer.prioritize_by_risk(contextualized)
     validated = analyzer.validate_exploitability(prioritized)

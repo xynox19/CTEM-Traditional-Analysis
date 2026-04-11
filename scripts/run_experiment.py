@@ -8,13 +8,34 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 import statistics
+from numpy.ma import copy
+from vm_scanning_context import VMScanningContextAnalyser
+from pentesting_context import PentestingContextAnalyser
+from attack_surface_context import AttackSurfaceDiscoveryAnalyser
+from ctem_context import CTEMContextAnalyser
+from vulnerability_scanner import VulnerabilityScanner
+
+try:
+    from ctem_context import CTEMContextAnalyser
+except ImportError:
+
+    class CTEMContextAnalyser:
+        def add_business_context(self, vulns):
+            for v in vulns:
+                v["business_criticality"] = random.choice([1,2,3])
+            return vulns
+
+        def prioritize_by_risk(self, vulns):
+            for v in vulns:
+                v["risk_score"] = v["cvss_score"] + random.uniform(0,1)
+            return sorted(vulns, key=lambda x: x["risk_score"], reverse=True)
+
+        def validate_exploitability(self, vulns):
+            for v in vulns:
+                v["exploitable"] = v["severity"] in ["CRITICAL","HIGH"]
+            return vulns
 
 class AttackSimulator:
-    """
-    Fallback attack simulator used when no real BAS engine exists.
-    Produces deterministic but realistic attack outcomes.
-    """
-
     def simulate_attacks(self, target, after_remediation=True):
         attacks = [
             {
@@ -39,7 +60,6 @@ class AttackSimulator:
                 "path": ["Bruteforce", "Access"]
             }
         ]
-
         return attacks
 
 # Project paths
@@ -49,10 +69,10 @@ DOCKER_DIR = PROJECT_ROOT / 'docker'
 DB_PATH = DATA_DIR / 'ctem_experiment.db'
 
 try:
-    from ctem_context import CTEMContextAnalyzer
+    from ctem_context import CTEMContextAnalyser
 except ImportError:
 
-    class CTEMContextAnalyzer:
+    class CTEMContextAnalyser:
         """Fallback CTEM logic"""
 
         def add_business_context(self, vulns):
@@ -70,11 +90,25 @@ except ImportError:
                 v["exploitable"] = v["severity"] in ["CRITICAL","HIGH"]
             return vulns
 
+class WorkflowMode:
+    TVM_BASELINE = "TVM Baseline"
+    TVM_PENTEST = "TVM + Pentesting"
+    TVM_CONTEXT = "TVM + ASM Context"
+    TVM_CONTEXT_PENTEST = "TVM + Context + Pentest"
+    CTEM = "CTEM"
+
 class ExperimentRunner:
     def __init__(self, simulation_mode=False):
         self.db_conn = None
         self.simulation_mode = simulation_mode
         self.monte_carlo_runs = 30 
+        self.vuln_scanner = VulnerabilityScanner()
+        self.attack_simulator = AttackSimulator()
+
+        self.vm_context = VMScanningContextAnalyser()
+        self.asm_context = AttackSurfaceDiscoveryAnalyser()
+        self.pentest_context = PentestingContextAnalyser()
+        self.ctem_context = CTEMContextAnalyser()
         random.seed(42)
         np.random.seed(42)
         if simulation_mode:
@@ -164,6 +198,124 @@ class ExperimentRunner:
         ]
         return vulnerabilities
     
+    def run_ablation_workflow(self, mode, iteration, shared_vulnerabilities):
+        # Step 1: Use shared vulnerabilities
+        vulnerabilities = copy.deepcopy(shared_vulnerabilities)
+
+        
+        print(f"{mode.upper()} - ITERATION {iteration}")
+        
+
+        iteration_start= datetime.now().isoformat()
+
+        cursor = self.db_conn.cursor()
+        cursor.execute("""
+            INSERT INTO iterations (workflow_type, iteration_number, start_time)
+            VALUES (?, ?, ?)
+        """, (mode, iteration, iteration_start.isoformat()))
+
+        iteration_id = cursor.lastrowid
+        self.db_conn.commit()
+
+        # Step 1: Discovery
+        vulnerabilities = self.vm_context.process(vulnerabilities)
+
+        if mode in [
+            WorkflowMode.TVM_CONTEXT,
+            WorkflowMode.TVM_CONTEXT_PENTEST,
+            WorkflowMode.CTEM
+        ]:
+            vulnerabilities = self.asm_context.enrich(vulnerabilities)
+
+        #pentest validation
+        if mode in [
+            WorkflowMode.TVM_PENTEST,
+            WorkflowMode.TVM_CONTEXT_PENTEST,
+            WorkflowMode.CTEM
+        ]:
+            vulnerabilities = self.pentest_context.validate(vulnerabilities)
+        
+        #prioritisation
+        if mode == WorkflowMode.CTEM:
+            vulnerabilities = self.ctem_context.prioritize(vulnerabilities)
+        else:
+            vulnerabilities = sorted(
+                vulnerabilities,
+                key=lambda x: x["cvss_score"],
+                reverse=True
+            )
+
+        t_detected = datetime.now()
+
+        # remediation speeds
+        remediation_times = {
+            WorkflowMode.CTEM: 3,
+            WorkflowMode.TVM_CONTEXT_PENTEST: 5,
+            WorkflowMode.TVM_CONTEXT: 7,
+            WorkflowMode.TVM_PENTEST: 10,
+            WorkflowMode.TVM_BASELINE: 14
+        }
+
+        delay_days = remediation_times.get(mode, 14)
+
+        for vuln in vulnerabilities:
+
+            scaled_delay = delay_days * 60
+
+            t_remediated = t_detected.timestamp() + scaled_delay
+
+            mew = t_remediated - iteration_start.timestamp()
+            mttr = t_remediated - t_detected.timestamp()
+
+            on_attack_path = 1 if vuln["severity"] in ["CRITICAL","HIGH"] else 0
+
+            cursor.execute("""
+                INSERT INTO exposures (
+                    iteration_id, workflow_type, exposure_id, severity,
+                    cvss_score, service, vulnerability_type,
+                    on_attack_path, t_appeared, t_detected,
+                    t_remediated, remediated, mew_seconds, mttr_seconds
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                iteration_id,
+                mode,
+                vuln["id"],
+                vuln["severity"],
+                vuln["cvss_score"],
+                vuln["service"],
+                vuln["type"],
+                on_attack_path,
+                iteration_start.isoformat(),
+                t_detected,
+                datetime.fromtimestamp(t_remediated).isoformat(),
+                1,
+                mew,
+                mttr
+            ))
+
+        #attack simulation
+        results = self.attack_simulator.simulate_attacks("enterprise")
+
+        for result in results:
+            cursor.execute("""
+                INSERT INTO attack_simulations (
+                    iteration_id, workflow_type, attack_type,
+                    target_service, success, steps_count, attack_path
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                iteration_id,
+                mode,
+                result["type"],
+                result["target"],
+                result["success"],
+                result["steps"],
+                json.dumps(result["path"])
+            ))
+
+        self.db_conn.commit()
+
+        print(f"✓ {mode} iteration complete")
+
     def generate_simulated_attack_results(self):
         """Generate realistic simulated attack simulation results"""
         attacks = [
@@ -265,9 +417,9 @@ class ExperimentRunner:
         - CVSS-based prioritization
         - Linear remediation queue
         """
-        print(f"\n{'='*70}")
+        
         print(f"TRADITIONAL VM - ITERATION {iteration}")
-        print(f"{'='*70}")
+        
         
         iteration_start = datetime.now()
         
@@ -276,11 +428,11 @@ class ExperimentRunner:
         cursor.execute('''
             INSERT INTO iterations (workflow_type, iteration_number, start_time)
             VALUES (?, ?, ?)
-        ''', ('Traditional VM', iteration, iteration_start))
+        ''', ('Traditional VM', iteration, iteration_start.isoformat()))
         iteration_id = cursor.lastrowid
         self.db_conn.commit()
         
-        # Step 1: Discovery (simulated weekly scan)
+        # Step 2: VM processing
         print("\n[1/4] Running vulnerability scan...")
         
         if self.simulation_mode:
@@ -343,7 +495,7 @@ class ExperimentRunner:
             ''', (
                 iteration_id, 'Traditional VM', vuln['id'], vuln['severity'],
                 vuln['cvss_score'], vuln['service'], vuln['type'], on_attack_path,
-                t_appeared, t_detected, datetime.fromtimestamp(t_remediated),
+                t_appeared, t_detected, datetime.fromtimestamp(t_remediated).isoformat(),
                 1, mew, mttr
             ))
         
@@ -398,9 +550,9 @@ class ExperimentRunner:
         - Validation-driven remediation
         - Attack path analysis
         """
-        print(f"\n{'='*70}")
+        
         print(f"CTEM WORKFLOW - ITERATION {iteration}")
-        print(f"{'='*70}")
+        
         
         iteration_start = datetime.now()
         
@@ -408,15 +560,15 @@ class ExperimentRunner:
         cursor.execute('''
             INSERT INTO iterations (workflow_type, iteration_number, start_time)
             VALUES (?, ?, ?)
-        ''', ('CTEM', iteration, iteration_start))
+        ''', ('CTEM', iteration, iteration_start.isoformat()))
         iteration_id = cursor.lastrowid
         self.db_conn.commit()
         
         # Step 1: Continuous Discovery + Contextualization
         print("\n[1/5] CTEM Scoping & Discovery...")
         
-        from ctem_context import CTEMContextAnalyzer
-        context_analyzer = CTEMContextAnalyzer()
+        from ctem_context import CTEMContextAnalyser
+        context_analyzer = CTEMContextAnalyser()
         
         if self.simulation_mode:
             vulnerabilities = self.generate_simulated_vulnerabilities()
@@ -482,7 +634,7 @@ class ExperimentRunner:
             ''', (
                 iteration_id, 'CTEM', vuln['id'], vuln['severity'],
                 vuln['cvss_score'], vuln['service'], vuln['type'], on_attack_path,
-                t_appeared, t_detected, datetime.fromtimestamp(t_remediated),
+                t_appeared, t_detected, datetime.fromtimestamp(t_remediated).isoformat(),
                 1, mew, mttr
             ))
         

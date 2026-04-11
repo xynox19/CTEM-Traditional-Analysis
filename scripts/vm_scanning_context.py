@@ -3,7 +3,7 @@
 import random
 from datetime import datetime, timedelta
 
-class VMScanningContextAnalyzer:
+class VMScanningContextAnalyser:
     def __init__(self):
         # Scanning schedule (traditional approach)
         self.scan_schedules = {
