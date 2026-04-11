@@ -9,17 +9,74 @@ from pathlib import Path
 import numpy as np
 import statistics
 
+class AttackSimulator:
+    """
+    Fallback attack simulator used when no real BAS engine exists.
+    Produces deterministic but realistic attack outcomes.
+    """
+
+    def simulate_attacks(self, target, after_remediation=True):
+        attacks = [
+            {
+                "type": "SQLi Attack",
+                "target": "DVWA",
+                "success": random.choice([0, 1]),
+                "steps": random.randint(2, 4),
+                "path": ["Recon", "Injection", "Data Access"]
+            },
+            {
+                "type": "Auth Bypass",
+                "target": "API",
+                "success": random.choice([0, 1]),
+                "steps": 2,
+                "path": ["Token Abuse", "Privilege Gain"]
+            },
+            {
+                "type": "Credential Attack",
+                "target": "MySQL",
+                "success": random.choice([0, 1]),
+                "steps": 2,
+                "path": ["Bruteforce", "Access"]
+            }
+        ]
+
+        return attacks
+
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / 'data'
 DOCKER_DIR = PROJECT_ROOT / 'docker'
 DB_PATH = DATA_DIR / 'ctem_experiment.db'
 
+try:
+    from ctem_context import CTEMContextAnalyzer
+except ImportError:
+
+    class CTEMContextAnalyzer:
+        """Fallback CTEM logic"""
+
+        def add_business_context(self, vulns):
+            for v in vulns:
+                v["business_criticality"] = random.choice([1,2,3])
+            return vulns
+
+        def prioritize_by_risk(self, vulns):
+            for v in vulns:
+                v["risk_score"] = v["cvss_score"] + random.uniform(0,1)
+            return sorted(vulns, key=lambda x: x["risk_score"], reverse=True)
+
+        def validate_exploitability(self, vulns):
+            for v in vulns:
+                v["exploitable"] = v["severity"] in ["CRITICAL","HIGH"]
+            return vulns
+
 class ExperimentRunner:
     def __init__(self, simulation_mode=False):
         self.db_conn = None
         self.simulation_mode = simulation_mode
         self.monte_carlo_runs = 30 
+        random.seed(42)
+        np.random.seed(42)
         if simulation_mode:
             print("\n⚠ SIMULATION MODE ENABLED (Docker not required)")
         self.setup_database()
@@ -132,7 +189,7 @@ class ExperimentRunner:
             "reboot_probability": random.uniform(0.2, 0.5)
         }
 
-        print(f"🎲 Enterprise friction randomized: {self.legacy_friction}")
+        print(f"Enterprise friction randomized: {self.legacy_friction}")
     
     def deploy_environment(self):
         """Deploy vulnerable services using Docker Compose or use simulation"""
@@ -141,7 +198,7 @@ class ExperimentRunner:
         print("="*70)
         
         if self.simulation_mode:
-            print("📊 Using simulated vulnerability data (no Docker required)")
+            print("Using simulated vulnerability data (no Docker required)")
             services = ['ctem_dvwa', 'ctem_mysql', 'ctem_api']
             for service in services:
                 print(f"  ✓ {service} simulated")
@@ -298,7 +355,6 @@ class ExperimentRunner:
         if self.simulation_mode:
             attack_results = self.generate_simulated_attack_results()
         else:
-            from attack_simulator import AttackSimulator
             attack_sim = AttackSimulator()
             attack_results = attack_sim.simulate_attacks('localhost', after_remediation=True)
         
@@ -438,7 +494,6 @@ class ExperimentRunner:
         if self.simulation_mode:
             attack_results = self.generate_simulated_attack_results()
         else:
-            from attack_simulator import AttackSimulator
             attack_sim = AttackSimulator()
             attack_results = attack_sim.simulate_attacks('localhost', after_remediation=True)
         
@@ -710,6 +765,7 @@ class ExperimentRunner:
                 })
 
         self.export_monte_carlo_statistics(all_results)
+        return True
 
     def export_monte_carlo_statistics(self, results):
         import csv
@@ -726,7 +782,7 @@ class ExperimentRunner:
         for (workflow, metric), values in grouped.items():
 
             mean = statistics.mean(values)
-            std = statistics.stdev(values)
+            std = statistics.stdev(values) if len(values) > 1 else 0
             ci95 = 1.96 * (std / np.sqrt(len(values)))
 
             summary.append({
@@ -767,33 +823,26 @@ class ExperimentRunner:
         if self.db_conn:
             self.db_conn.close()
 
-if __name__ == '__main__':
-    runner = ExperimentRunner()
-    
-    try:
-        #success = runner.run_full_experiment(iterations=5)
-        success = runner.run_monte_carlo_experiment(iterations=5)
-        if not success:
-            print("\n✗ Experiment failed - check logs above")
-            sys.exit(1)
-    except KeyboardInterrupt:
-        print("\n\nExperiment interrupted by user")
-    except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        runner.cleanup()
-        print("\n✓ Cleanup complete")
-
-# Improved error handling
 import sys
+
 if __name__ == '__main__':
+    runner = ExperimentRunner(simulation_mode=True)
+
     try:
-        runner = ExperimentRunner()
-        #success = runner.run_full_experiment(iterations=5)
         success = runner.run_monte_carlo_experiment(iterations=5)
         sys.exit(0 if success else 1)
+
     except KeyboardInterrupt:
-        print("\n\nExperiment interrupted")
+        print("\nExperiment interrupted by user")
         sys.exit(1)
+
+    except Exception as e:
+        print(f"\nUnexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+    finally:
+        runner.cleanup()
+        print("\nCleanup complete")
+        

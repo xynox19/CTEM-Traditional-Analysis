@@ -29,15 +29,15 @@ Three containerised vulnerable services simulate a realistic attack surface:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   Docker Compose Network               │
+│                   Docker Compose Network                │
 ├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌──────────────┐  ┌─────────────┐  ┌──────────────┐   │
-│  │    DVWA      │  │   MySQL     │  │ Node.js API  │   │
-│  │  (Web App)   │  │ (Database)  │  │  (Backend)   │   │
-│  │   :8080      │  │  :3306      │  │    :3000     │   │
-│  └──────────────┘  └─────────────┘  └──────────────┘   │
-│                                                          │
+│                                                         │
+│  ┌──────────────┐  ┌─────────────┐  ┌──────────────┐    │
+│  │    DVWA      │  │   MySQL     │  │ Node.js API  │    │
+│  │  (Web App)   │  │ (Database)  │  │  (Backend)   │    │
+│  │   :8080      │  │  :3306      │  │    :3000     │    │
+│  └──────────────┘  └─────────────┘  └──────────────┘    │
+│                                                         │
 └─────────────────────────────────────────────────────────┘
    - DVWA: Damn Vulnerable Web Application
    - MySQL: Database with test data
