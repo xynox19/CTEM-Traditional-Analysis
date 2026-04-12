@@ -304,6 +304,24 @@ class AttackSurfaceDiscoveryAnalyser:
             'tickets_created': 0,
             'open_tickets': 0
         }
+    def enrich(self, vulnerabilities):
+        enriched = []
+
+        for vuln in vulnerabilities:
+            v = vuln.copy()
+
+            # simulate attack surface discovery context
+            v["external_exposure"] = random.choice([0, 1])
+            v["internet_facing"] = v["external_exposure"] == 1
+            v["asset_criticality"] = random.choice(["LOW", "MEDIUM", "HIGH"])
+
+            # simple exposure score
+            exposure_bonus = 1.5 if v["internet_facing"] else 0.5
+            v["exposure_score"] = v["cvss_score"] * exposure_bonus
+
+            enriched.append(v)
+
+        return enriched
 
 
 if __name__ == '__main__':
@@ -313,7 +331,7 @@ if __name__ == '__main__':
     
     analyzer = AttackSurfaceDiscoveryAnalyser()
     
-    print("\n=== ATTACK SURFACE DISCOVERY METHODOLOGY ===")
+    print("\n ATTACK SURFACE DISCOVERY METHODOLOGY ")
     
     # Run ASD workflow
     assets = analyzer.discover_assets(vulns)

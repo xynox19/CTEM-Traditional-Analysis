@@ -55,13 +55,13 @@ class CTEMContextAnalyser:
         
         return contextualized
     
-    def prioritize_by_risk(self, vulnerabilities):
+    def prioritise_by_risk(self, vulnerabilities):
         """
         CTEM Risk-based prioritization (vs CVSS-only)
         
         Risk Score = f(CVSS, Business Impact, Exploitability, Threat Intel)
         """
-        prioritized = []
+        prioritised = []
         
         for vuln in vulnerabilities:
             vuln_copy = vuln.copy()
@@ -91,10 +91,10 @@ class CTEMContextAnalyser:
             risk_score = min(risk_score, 10.0)
             
             vuln_copy['risk_score'] = round(risk_score, 2)
-            prioritized.append(vuln_copy)
+            prioritised.append(vuln_copy)
         
         # Sort by risk score (descending)
-        return sorted(prioritized, key=lambda x: x['risk_score'], reverse=True)
+        return sorted(prioritised, key=lambda x: x['risk_score'], reverse=True)
     
     def validate_exploitability(self, vulnerabilities):
         """
@@ -224,8 +224,8 @@ if __name__ == '__main__':
     
     analyzer = CTEMContextAnalyser()
     contextualized = analyzer.add_business_context(vulns)
-    prioritized = analyzer.prioritize_by_risk(contextualized)
-    validated = analyzer.validate_exploitability(prioritized)
+    prioritised = analyzer.prioritise_by_risk(contextualized)
+    validated = analyzer.validate_exploitability(prioritised)
     
     print("\nTop 5 Risks (CTEM Prioritization):")
     for v in validated[:5]:

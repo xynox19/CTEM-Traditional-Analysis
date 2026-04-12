@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 import statistics
-from numpy.ma import copy
+import copy
 from vm_scanning_context import VMScanningContextAnalyser
 from pentesting_context import PentestingContextAnalyser
 from attack_surface_context import AttackSurfaceDiscoveryAnalyser
@@ -25,7 +25,7 @@ except ImportError:
                 v["business_criticality"] = random.choice([1,2,3])
             return vulns
 
-        def prioritize_by_risk(self, vulns):
+        def prioritise_by_risk(self, vulns):
             for v in vulns:
                 v["risk_score"] = v["cvss_score"] + random.uniform(0,1)
             return sorted(vulns, key=lambda x: x["risk_score"], reverse=True)
@@ -80,7 +80,7 @@ except ImportError:
                 v["business_criticality"] = random.choice([1,2,3])
             return vulns
 
-        def prioritize_by_risk(self, vulns):
+        def prioritise_by_risk(self, vulns):
             for v in vulns:
                 v["risk_score"] = v["cvss_score"] + random.uniform(0,1)
             return sorted(vulns, key=lambda x: x["risk_score"], reverse=True)
@@ -206,7 +206,7 @@ class ExperimentRunner:
         print(f"{mode.upper()} - ITERATION {iteration}")
         
 
-        iteration_start= datetime.now().isoformat()
+        iteration_start= datetime.now()
 
         cursor = self.db_conn.cursor()
         cursor.execute("""
@@ -237,7 +237,7 @@ class ExperimentRunner:
         
         #prioritisation
         if mode == WorkflowMode.CTEM:
-            vulnerabilities = self.ctem_context.prioritize(vulnerabilities)
+            vulnerabilities = self.ctem_context.prioritise_by_risk(vulnerabilities)
         else:
             vulnerabilities = sorted(
                 vulnerabilities,
@@ -345,9 +345,9 @@ class ExperimentRunner:
     
     def deploy_environment(self):
         """Deploy vulnerable services using Docker Compose or use simulation"""
-        print("\n" + "="*70)
+        
         print("DEPLOYING VULNERABLE ENVIRONMENT")
-        print("="*70)
+        
         
         if self.simulation_mode:
             print("Using simulated vulnerability data (no Docker required)")
@@ -588,14 +588,14 @@ class ExperimentRunner:
         
         # Step 2: CTEM Prioritization (Risk-based)
         print("\n[2/5] Risk-based Prioritization...")
-        prioritized = context_analyzer.prioritize_by_risk(contextualized_vulns)
+        prioritised = context_analyzer.prioritise_by_risk(contextualized_vulns)
         
-        critical_exposures = [v for v in prioritized if v['risk_score'] >= 8.0]
+        critical_exposures = [v for v in prioritised if v['risk_score'] >= 8.0]
         print(f"  {len(critical_exposures)} critical exposures identified")
         
         # Step 3: Validation (simulate BAS/attack path analysis)
         print("\n[3/5] Exposure Validation...")
-        validated = context_analyzer.validate_exploitability(prioritized)
+        validated = context_analyzer.validate_exploitability(prioritised)
         
         exploitable = [v for v in validated if v['exploitable']]
         print(f"  {len(exploitable)} confirmed exploitable")
@@ -682,10 +682,10 @@ class ExperimentRunner:
         return True
     
     def export_results(self):
-        """Export results to CSV for Power BI"""
-        print("\n" + "="*70)
-        print("EXPORTING RESULTS FOR POWER BI")
-        print("="*70)
+        """Export results to CSV for matplotlib visualisation"""
+        
+        print("EXPORTING RESULTS FOR ")
+        
         
         cursor = self.db_conn.cursor()
         
@@ -807,9 +807,9 @@ class ExperimentRunner:
         print(f"\n✓ Exported metrics summary to {metrics_file}")
         
         # Print summary
-        print("\n" + "="*70)
+        
         print("METRICS SUMMARY")
-        print("="*70)
+        
         for m in metrics:
             print(f"\n{m['workflow']}:")
             print(f"  MEW: {m['mew_hours']:.2f} hours")
@@ -818,12 +818,12 @@ class ExperimentRunner:
             print(f"  RFR: {m['rfr_percent']:.1f}%")
             print(f"  Attack Success Rate: {m['attack_success_rate_percent']:.1f}%")
     
-    def run_full_experiment(self, iterations=5):
+    def run_full_experiment(self, iterations=5, run_offset=0):
         """Run the complete experiment"""
-        print("\n" + "="*70)
+        
         print("CTEM VS TRADITIONAL VM - EXPERIMENTAL COMPARISON")
         print("Coventry University MSc Cybersecurity Dissertation")
-        print("="*70)
+        
         print(f"\nRunning {iterations} iterations for each workflow")
         print(f"Estimated completion time: {iterations * 4} minutes")
         
@@ -833,46 +833,40 @@ class ExperimentRunner:
             return False
         
         # Run Traditional VM iterations
-        print("\n" + "="*70)
-        print("PHASE 1: TRADITIONAL VULNERABILITY MANAGEMENT")
-        print("="*70)
         
-        for i in range(1, iterations + 1):
-            if not self.run_traditional_vm_workflow(i):
-                print(f"\n✗ Traditional VM iteration {i} failed")
-                return False
-            time.sleep(5)  # Brief pause between iterations
+        shared_vulnerabilities = self.generate_simulated_vulnerabilities()
+
+        workflow_modes = [
+            WorkflowMode.TVM_BASELINE,
+            WorkflowMode.TVM_PENTEST,
+            WorkflowMode.TVM_CONTEXT,
+            WorkflowMode.TVM_CONTEXT_PENTEST,
+            WorkflowMode.CTEM
+        ]
+
+        for mode in workflow_modes:
+            for i in range(1, iterations + 1):
+                self.run_ablation_workflow(mode, i, shared_vulnerabilities)
         
-        # Run CTEM iterations
-        print("\n" + "="*70)
-        print("PHASE 2: CONTINUOUS THREAT EXPOSURE MANAGEMENT")
-        print("="*70)
-        
-        for i in range(1, iterations + 1):
-            if not self.run_ctem_workflow(i):
-                print(f"\n✗ CTEM iteration {i} failed")
-                return False
-            time.sleep(5)
-        
+
         # Export results
         self.export_results()
         
-        print("\n" + "="*70)
+        
         print("EXPERIMENT COMPLETE!")
-        print("="*70)
+        
         print(f"\nResults saved to: {DATA_DIR}")
         print("Next steps:")
-        print("1. Open Power BI Desktop")
-        print("2. Import CSV files from data/ directory")
-        print("3. Create visualizations using the metrics")
-        print("4. Write dissertation with empirical evidence!")
+        print("1. Import CSV files from data/ directory")
+        print("2. Create visualisations using the metrics")
+        print("3. Write dissertation with empirical evidence!")
         
         return True
     
     def run_monte_carlo_experiment(self, iterations=5):
-        print("\n" + "="*70)
+        
         print("MONTE CARLO CTEM vs TRADITIONAL VM EXPERIMENT")
-        print("="*70)
+        
 
         all_results = []
 
@@ -883,16 +877,9 @@ class ExperimentRunner:
             # Randomize enterprise conditions
             self.randomize_enterprise_friction()
 
-            # Reset database
-            if self.db_conn:
-                self.db_conn.close()
-
-            if DB_PATH.exists():
-                DB_PATH.unlink()
-
             self.setup_database()
 
-            success = self.run_full_experiment(iterations)
+            success = self.run_full_experiment(iterations, run_offset=(run - 1) * iterations)
 
             if not success:
                 continue
@@ -904,6 +891,7 @@ class ExperimentRunner:
                     AVG(mew_seconds),
                     AVG(mttr_seconds)
                 FROM exposures
+                WHERE workflow_type IN ('Traditional VM','CTEM')
                 GROUP BY workflow_type
             """)
 
@@ -915,7 +903,8 @@ class ExperimentRunner:
                     "mew": mew,
                     "mttr": mttr
                 })
-
+        print("Collected results:", len(all_results))
+        print(all_results[:5])
         self.export_monte_carlo_statistics(all_results)
         return True
 

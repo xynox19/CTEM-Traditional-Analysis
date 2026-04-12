@@ -188,6 +188,12 @@ class VMScanningContextAnalyser:
         
         return report
     
+    def process(self, vulnerabilities):
+        scanned = self.schedule_and_execute_scan(vulnerabilities)
+        prioritised = self.apply_cvss_prioritization(scanned)
+        tickets = self.create_remediation_tickets(prioritised)
+        return prioritised
+
     def iterate_scanning_cycle(self, vulnerabilities):
         """
         Simulate multiple scanning cycles showing traditional VMS patterns
@@ -269,31 +275,31 @@ if __name__ == '__main__':
     scanner = VulnerabilityScanner()
     vulns = scanner.scan_targets(['http://localhost:8080', 'localhost:3306', 'http://localhost:3000'])
     
-    analyzer = VMScanningContextAnalyzer()
+    analyser = VMScanningContextAnalyser()
     
     print("\nVULNERABILITY MANAGEMENT SCANNING METHODOLOGY")
     
     # Run VMS workflow
-    scanned = analyzer.schedule_and_execute_scan(vulns)
+    scanned = analyser.schedule_and_execute_scan(vulns)
     print(f"\nScanned Vulnerabilities: {len(scanned)}")
     
-    prioritized = analyzer.apply_cvss_prioritization(scanned)
+    prioritized = analyser.apply_cvss_prioritization(scanned)
     print(f"Prioritized by CVSS: {len(prioritized)}")
     
-    tickets = analyzer.create_remediation_tickets(prioritized)
+    tickets = analyser.create_remediation_tickets(prioritized)
     print(f"Remediation Tickets Created: {len(tickets)}")
     
-    progress = analyzer.track_remediation_progress(prioritized, tickets)
+    progress = analyser.track_remediation_progress(prioritized, tickets)
     print(f"\nProgress Tracking:")
     print(f"  Open Tickets: {progress['open_tickets']}")
     print(f"  Closed Tickets: {progress['closed_tickets']}")
     print(f"  Overdue Tickets: {progress['overdue_tickets']}")
     
-    compliance = analyzer.generate_compliance_report(prioritized, progress)
+    compliance = analyser.generate_compliance_report(prioritized, progress)
     print(f"\nCompliance Status: {compliance['compliance_status']}")
     
-    cycles = analyzer.iterate_scanning_cycle(prioritized)
+    cycles = analyser.iterate_scanning_cycle(prioritized)
     print(f"Scanning Cycles Projected: {len(cycles)}")
     
-    trends = analyzer.compare_scan_trends(cycles)
+    trends = analyser.compare_scan_trends(cycles)
     print(f"Trend Analysis: {trends['total_trend']}")
