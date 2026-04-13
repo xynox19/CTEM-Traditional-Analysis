@@ -18,7 +18,6 @@ from vulnerability_scanner import VulnerabilityScanner
 try:
     from ctem_context import CTEMContextAnalyser
 except ImportError:
-
     class CTEMContextAnalyser:
         def add_business_context(self, vulns):
             for v in vulns:
@@ -197,11 +196,41 @@ class ExperimentRunner:
             {'id': 'CVE-2021-015', 'service': 'DVWA', 'type': 'Cross-Site Request Forgery', 'severity': 'MEDIUM', 'cvss_score': 6.2},
         ]
         return vulnerabilities
-    
+
+    def generate_remediation_deadline(self, severity):
+        import random
+
+        sla_ranges = {
+            "Critical": (1, 3),
+            "High": (3, 7),
+            "Medium": (14, 30),
+            "Low": (30, 90)
+        }
+
+        min_days, max_days = sla_ranges.get(severity, (14, 30))
+        return random.uniform(min_days, max_days) * 86400
+
+
+    def simulate_remediation_time(self, severity):
+        import random
+
+        remediation_speed = {
+            "Critical": (0.5, 2),
+            "High": (2, 10),
+            "Medium": (10, 40),
+            "Low": (20, 120)
+        }
+
+        low, high = remediation_speed.get(severity, (10, 40))
+        return random.uniform(low, high) * 86400
+
     def run_ablation_workflow(self, mode, iteration, shared_vulnerabilities):
         # Step 1: Use shared vulnerabilities
         vulnerabilities = copy.deepcopy(shared_vulnerabilities)
-
+        for vuln in vulnerabilities:
+            vuln["remediation_deadline"] = self.generate_remediation_deadline(
+                vuln["severity"]
+            )
         
         print(f"{mode.upper()} - ITERATION {iteration}")
         
@@ -219,6 +248,7 @@ class ExperimentRunner:
 
         # Step 1: Discovery
         vulnerabilities = self.vm_context.process(vulnerabilities)
+        
 
         if mode in [
             WorkflowMode.TVM_CONTEXT,
@@ -259,15 +289,29 @@ class ExperimentRunner:
         delay_days = remediation_times.get(mode, 14)
 
         for vuln in vulnerabilities:
+            remediation_time = self.simulate_remediation_time(
+                vuln["severity"]
+            )
 
-            scaled_delay = delay_days * 60
+            if mode != WorkflowMode.CTEM:
+                remediation_time += random.uniform(7, 30) * 86400
+            else:
+                remediation_time *= 0.75
 
-            t_remediated = t_detected.timestamp() + scaled_delay
+            deadline = vuln["remediation_deadline"]
 
-            mew = t_remediated - iteration_start.timestamp()
-            mttr = t_remediated - t_detected.timestamp()
+            if remediation_time > deadline:
+                remediated = 0
+                effective_time = deadline
+            else:
+                remediated = 1
+                effective_time = remediation_time
 
-            on_attack_path = 1 if vuln["severity"] in ["CRITICAL","HIGH"] else 0
+            t_remediated = iteration_start.timestamp() + effective_time
+            mew = effective_time
+            mttr = effective_time
+
+            on_attack_path = 1 if vuln["severity"] in ["CRITICAL", "HIGH"] else 0
 
             cursor.execute("""
                 INSERT INTO exposures (
@@ -286,9 +330,9 @@ class ExperimentRunner:
                 vuln["type"],
                 on_attack_path,
                 iteration_start.isoformat(),
-                t_detected,
+                t_detected.isoformat(),
                 datetime.fromtimestamp(t_remediated).isoformat(),
-                1,
+                remediated,
                 mew,
                 mttr
             ))
@@ -446,6 +490,10 @@ class ExperimentRunner:
                 'localhost:3306',          # MySQL
                 'http://localhost:3000'    # API
             ])
+            for vuln in vulnerabilities:
+                vuln["remediation_deadline"] = self.generate_remediation_deadline(
+                    vuln["severity"]
+                )
         
         print(f"  Found {len(vulnerabilities)} vulnerabilities")
         
@@ -469,6 +517,9 @@ class ExperimentRunner:
         }
         
         for vuln in vulnerabilities:
+            vuln["remediation_deadline"] = self.generate_remediation_deadline(
+            vuln["severity"]
+            )
             t_appeared = iteration_start
             
             # Determine if on attack path (simplified)
@@ -573,6 +624,10 @@ class ExperimentRunner:
         if self.simulation_mode:
             vulnerabilities = self.generate_simulated_vulnerabilities()
             print(f"  Generated {len(vulnerabilities)} simulated exposures")
+            for vuln in vulnerabilities:
+                vuln["remediation_deadline"] = self.generate_remediation_deadline(
+                    vuln["severity"]
+                )
         else:
             from vulnerability_scanner import VulnerabilityScanner
             scanner = VulnerabilityScanner()
@@ -581,6 +636,10 @@ class ExperimentRunner:
                 'localhost:3306',
                 'http://localhost:3000'
             ])
+            for vuln in vulnerabilities:
+                vuln["remediation_deadline"] = self.generate_remediation_deadline(
+                    vuln["severity"]
+                )
         
         # Add business context
         contextualized_vulns = context_analyzer.add_business_context(vulnerabilities)
